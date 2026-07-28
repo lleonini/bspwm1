@@ -155,8 +155,23 @@ typedef enum snap_zone : unsigned char {
 
 typedef enum layout : unsigned char {
 	LAYOUT_TILED,
-	LAYOUT_MONOCLE
+	LAYOUT_MONOCLE,
+	LAYOUT_TALL,
+	LAYOUT_WIDE,
+	LAYOUT_GRID
 } layout_t;
+
+/* Not a layout_t value itself (kept out of the enum so existing
+ * `switch (layout_t)` blocks stay exhaustive without a dummy case) -
+ * just the count of real layouts, for cycling code (desktop -l
+ * next/prev) to wrap correctly as layouts are added. Must be updated
+ * alongside the enum above. */
+#define LAYOUT_COUNT (LAYOUT_GRID + 1)
+
+typedef enum layout_variant : unsigned char {
+	VARIANT_NORMAL,
+	VARIANT_REVERSED
+} layout_variant_t;
 
 typedef enum flip : unsigned char {
 	FLIP_HORIZONTAL,
@@ -218,8 +233,14 @@ typedef struct {
 	option_bool_t local;
 	option_bool_t tiled;
 	option_bool_t monocle;
+	option_bool_t tall;
+	option_bool_t wide;
+	option_bool_t grid;
 	option_bool_t user_tiled;
 	option_bool_t user_monocle;
+	option_bool_t user_tall;
+	option_bool_t user_wide;
+	option_bool_t user_grid;
 } desktop_select_t;
 
 typedef struct {
@@ -286,6 +307,7 @@ struct node_t {
     node_t *second_child;
     client_t *client;
     uint32_t id;
+    uint32_t insertion_seq;
 	split_type_t split_type;
 	double split_ratio;
 	presel_t *presel;
@@ -313,6 +335,9 @@ struct desktop_t {
 	uint32_t id;
 	layout_t layout;
 	layout_t user_layout;
+	layout_t last_layout;
+	layout_variant_t layout_variant;
+	double master_ratio;
 	node_t *root;
 	node_t *focus;
 	desktop_t *prev;

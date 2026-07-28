@@ -36,6 +36,7 @@
 #include "desktop.h"
 #include "subscribe.h"
 #include "settings.h"
+#include "layout.h"
 
 static inline void batch_ewmh_update(void)
 {
@@ -131,10 +132,16 @@ bool set_layout(monitor_t *m, desktop_t *d, layout_t l, bool user)
 
 	layout_t old_layout = d->layout;
 
-	if (user)
+	if (user) {
+		/* Only remember the user's own previous choice here, not
+		 * whatever single_monocle happened to force `layout` to - the
+		 * `~` toggle in `bspc desktop -l` should recall what you last
+		 * asked for, not a transient auto-monocle state. */
+		d->last_layout = d->user_layout;
 		d->user_layout = l;
-	else
+	} else {
 		d->layout = l;
+	}
 
 	if (user && (!single_monocle || tiled_count(d->root, true) > 1))
 		d->layout = l;
@@ -243,7 +250,10 @@ desktop_t *make_desktop(const char *name, uint32_t id)
 	d->prev = d->next = NULL;
 	d->root = d->focus = NULL;
 	d->user_layout = LAYOUT_TILED;
+	d->last_layout = LAYOUT_TILED;
 	d->layout = single_monocle ? LAYOUT_MONOCLE : LAYOUT_TILED;
+	d->layout_variant = VARIANT_NORMAL;
+	d->master_ratio = master_ratio;
 	d->padding = (padding_t) PADDING;
 	d->window_gap = window_gap;
 	d->border_width = border_width;

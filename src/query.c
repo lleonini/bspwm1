@@ -34,6 +34,7 @@
 #include "tree.h"
 #include "query.h"
 #include "geometry.h"
+#include "layout.h"
 
 #define MAX_RECURSION_DEPTH 1000
 
@@ -132,6 +133,9 @@ void query_desktop(desktop_t *d, FILE *rsp)
 	fprintf(rsp, "\"id\":%u,", d->id);
 	fprintf(rsp, "\"layout\":\"%s\",", LAYOUT_STR(d->layout));
 	fprintf(rsp, "\"userLayout\":\"%s\",", LAYOUT_STR(d->user_layout));
+	fprintf(rsp, "\"lastLayout\":\"%s\",", LAYOUT_STR(d->last_layout));
+	fprintf(rsp, "\"layoutVariant\":\"%s\",", layout_variant_str(d->layout_variant));
+	fprintf(rsp, "\"masterRatio\":%lf,", d->master_ratio);
 	fprintf(rsp, "\"windowGap\":%i,", d->window_gap);
 	fprintf(rsp, "\"borderWidth\":%u,", d->border_width);
 	fprintf(rsp, "\"focusedNodeId\":%u,", d->focus ? d->focus->id : 0);
@@ -709,6 +713,8 @@ int node_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst)
 		find_by_area(AREA_BIGGEST, ref, dst, &sel);
 	} else if (streq("smallest", desc)) {
 		find_by_area(AREA_SMALLEST, ref, dst, &sel);
+	} else if (streq("master", desc)) {
+		find_master(ref, dst, &sel);
 	} else if (streq("pointed", desc)) {
 		bspwm_wid_t win = BSPWM_WID_NONE;
 		query_pointer(&win, NULL);
@@ -1441,6 +1447,9 @@ bool desktop_matches(coordinates_t *loc, coordinates_t *ref, desktop_select_t *s
 	}
 	DLAYOUT(tiled, LAYOUT_TILED)
 	DLAYOUT(monocle, LAYOUT_MONOCLE)
+	DLAYOUT(tall, LAYOUT_TALL)
+	DLAYOUT(wide, LAYOUT_WIDE)
+	DLAYOUT(grid, LAYOUT_GRID)
 #undef DLAYOUT
 
 #define DUSERLAYOUT(p, e) \
@@ -1452,6 +1461,9 @@ bool desktop_matches(coordinates_t *loc, coordinates_t *ref, desktop_select_t *s
 	}
 	DUSERLAYOUT(user_tiled, LAYOUT_TILED)
 	DUSERLAYOUT(user_monocle, LAYOUT_MONOCLE)
+	DUSERLAYOUT(user_tall, LAYOUT_TALL)
+	DUSERLAYOUT(user_wide, LAYOUT_WIDE)
+	DUSERLAYOUT(user_grid, LAYOUT_GRID)
 #undef DUSERLAYOUT
 
 	return true;

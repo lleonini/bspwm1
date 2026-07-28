@@ -41,6 +41,9 @@
 #include "window.h"
 #include "tree.h"
 #include "rule.h"
+#include "layout.h"
+
+static uint32_t node_seq_counter = 0;
 
 #define MAX_TREE_DEPTH 256
 #define SAFE_ADD(a, b, max) ((b) > 0 && (a) > (max) - (b)) ? (max) : (a) + (b)
@@ -84,7 +87,90 @@ void arrange(monitor_t *m, desktop_t *d)
 		rect.height = SAFE_SUB(rect.height, d->window_gap);
 	}
 
-	apply_layout(m, d, d->root, rect, rect);
+	switch (d->layout) {
+		case LAYOUT_TILED:
+		case LAYOUT_MONOCLE:
+			apply_layout(m, d, d->root, rect, rect);
+			break;
+		case LAYOUT_TALL:
+			layout_tall_arrange(m, d, rect);
+			break;
+		case LAYOUT_WIDE:
+			layout_wide_arrange(m, d, rect);
+			break;
+		case LAYOUT_GRID:
+			layout_grid_arrange(m, d, rect);
+			break;
+	}
+}
+
+void render_node(monitor_t *m, desktop_t *d, node_t *n, bspwm_rect_t rect)
+{
+	n->rectangle = rect;
+
+	if (n->presel) {
+		draw_presel_feedback(m, d, n);
+	}
+
+	if (!n->client) {
+		return;
+	}
+
+	unsigned int bw;
+	bool the_only_window = !m->prev && !m->next && d->root && d->root->client;
+
+	if ((borderless_monocle && d->layout == LAYOUT_MONOCLE && IS_TILED(n->client)) ||
+	    (borderless_singleton && the_only_window) ||
+	    n->client->state == STATE_FULLSCREEN) {
+		bw = 0;
+	} else {
+		bw = n->client->border_width;
+	}
+
+	bspwm_rect_t r;
+	bspwm_rect_t cr = get_window_rectangle(n);
+	client_state_t s = n->client->state;
+
+	if (s == STATE_TILED || s == STATE_PSEUDO_TILED) {
+		int wg = (gapless_monocle && d->layout == LAYOUT_MONOCLE ? 0 : d->window_gap);
+		r = rect;
+
+		if ((int)bw > (INT_MAX - wg) / 2) {
+			bw = 0;
+		}
+
+		int bleed = wg + 2 * (int)bw;
+		r.width = (bleed < (int)r.width ? r.width - bleed : 1);
+		r.height = (bleed < (int)r.height ? r.height - bleed : 1);
+
+		if (s == STATE_PSEUDO_TILED) {
+			bspwm_rect_t f = n->client->floating_rectangle;
+			r.width = MIN(r.width, f.width);
+			r.height = MIN(r.height, f.height);
+			if (center_pseudo_tiled) {
+				r.x = rect.x - bw + (rect.width - wg - r.width) / 2;
+				r.y = rect.y - bw + (rect.height - wg - r.height) / 2;
+			}
+		}
+		n->client->tiled_rectangle = r;
+	} else if (s == STATE_FLOATING) {
+		r = n->client->floating_rectangle;
+	} else {
+		r = m->rectangle;
+		n->client->tiled_rectangle = r;
+	}
+
+	apply_size_hints(n->client, &r.width, &r.height);
+
+	if (!rect_eq(r, cr)) {
+		window_move_resize(n->id, r.x, r.y, r.width, r.height);
+		if (!grabbing) {
+			put_status(SBSC_MASK_NODE_GEOMETRY, "node_geometry 0x%08X 0x%08X 0x%08X %ux%u+%i+%i\n",
+		   m->id, d->id, n->id, r.width, r.height, r.x, r.y);
+		}
+	}
+
+	window_border_width(n->id, bw);
 }
 
 void apply_layout(monitor_t *m, desktop_t *d, node_t *n, bspwm_rect_t rect, bspwm_rect_t root_rect)
@@ -93,73 +179,15 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, bspwm_rect_t rect, bspw
 		return;
 	}
 
-	n->rectangle = rect;
-
-	if (n->presel) {
-		draw_presel_feedback(m, d, n);
-	}
-
 	if (is_leaf(n)) {
-		if (!n->client) {
-			return;
-		}
-
-		unsigned int bw;
-		bool the_only_window = !m->prev && !m->next && d->root && d->root->client;
-
-		if ((borderless_monocle && d->layout == LAYOUT_MONOCLE && IS_TILED(n->client)) ||
-		    (borderless_singleton && the_only_window) ||
-		    n->client->state == STATE_FULLSCREEN) {
-			bw = 0;
-		} else {
-			bw = n->client->border_width;
-		}
-
-		bspwm_rect_t r;
-		bspwm_rect_t cr = get_window_rectangle(n);
-		client_state_t s = n->client->state;
-
-		if (s == STATE_TILED || s == STATE_PSEUDO_TILED) {
-			int wg = (gapless_monocle && d->layout == LAYOUT_MONOCLE ? 0 : d->window_gap);
-			r = rect;
-
-			if ((int)bw > (INT_MAX - wg) / 2) {
-				bw = 0;
-			}
-
-			int bleed = wg + 2 * (int)bw;
-			r.width = (bleed < (int)r.width ? r.width - bleed : 1);
-			r.height = (bleed < (int)r.height ? r.height - bleed : 1);
-
-			if (s == STATE_PSEUDO_TILED) {
-				bspwm_rect_t f = n->client->floating_rectangle;
-				r.width = MIN(r.width, f.width);
-				r.height = MIN(r.height, f.height);
-				if (center_pseudo_tiled) {
-					r.x = rect.x - bw + (rect.width - wg - r.width) / 2;
-					r.y = rect.y - bw + (rect.height - wg - r.height) / 2;
-				}
-			}
-			n->client->tiled_rectangle = r;
-		} else if (s == STATE_FLOATING) {
-			r = n->client->floating_rectangle;
-		} else {
-			r = m->rectangle;
-			n->client->tiled_rectangle = r;
-		}
-
-		apply_size_hints(n->client, &r.width, &r.height);
-
-		if (!rect_eq(r, cr)) {
-			window_move_resize(n->id, r.x, r.y, r.width, r.height);
-			if (!grabbing) {
-				put_status(SBSC_MASK_NODE_GEOMETRY, "node_geometry 0x%08X 0x%08X 0x%08X %ux%u+%i+%i\n",
-			   m->id, d->id, n->id, r.width, r.height, r.x, r.y);
-			}
-		}
-
-		window_border_width(n->id, bw);
+		render_node(m, d, n, rect);
 	} else {
+		n->rectangle = rect;
+
+		if (n->presel) {
+			draw_presel_feedback(m, d, n);
+		}
+
 		if (!n->first_child || !n->second_child) {
 			return;
 		}
@@ -244,6 +272,18 @@ bool set_ratio(node_t *n, double rat)
 	}
 
 	n->split_ratio = rat;
+	return true;
+}
+
+/* Analogous to set_ratio, but for LAYOUT_TALL/LAYOUT_WIDE, whose split is
+ * desktop-wide (master_ratio) rather than per-node (split_ratio). */
+bool set_master_ratio(desktop_t *d, double rat)
+{
+	if (!d || d->master_ratio == rat || rat <= 0.0 || rat >= 1.0) {
+		return false;
+	}
+
+	d->master_ratio = rat;
 	return true;
 }
 
@@ -916,6 +956,7 @@ node_t *make_node(uint32_t id)
 		return NULL;
 	}
 	n->id = id;
+	n->insertion_seq = ++node_seq_counter;
 	n->parent = n->first_child = n->second_child = NULL;
 	n->vacant = n->hidden = n->sticky = n->private = n->locked = n->marked = false;
 	n->split_ratio = split_ratio;
@@ -1470,6 +1511,37 @@ void find_by_area(area_peak_t ap, coordinates_t *ref, coordinates_t *dst, node_s
 	}
 }
 
+/* The "master" node of a desktop: the tiled leaf with the lowest
+ * insertion_seq (oldest surviving window). This is what TALL/WIDE render
+ * in the master slot and what GRID renders first, but the notion makes
+ * sense regardless of the desktop's current layout, so it's not
+ * restricted to those three. */
+void find_master(coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
+{
+	if (!ref || !ref->monitor || !ref->desktop) {
+		return;
+	}
+
+	node_t *master = NULL;
+	for (node_t *f = first_extrema(ref->desktop->root); f; f = next_leaf(f, ref->desktop->root)) {
+		if (f->hidden || f->client == NULL || f->vacant) {
+			continue;
+		}
+		if (master == NULL || f->insertion_seq < master->insertion_seq) {
+			master = f;
+		}
+	}
+
+	if (master == NULL) {
+		return;
+	}
+
+	coordinates_t loc = {ref->monitor, ref->desktop, master};
+	if (node_matches(&loc, ref, sel)) {
+		*dst = loc;
+	}
+}
+
 void rotate_tree(node_t *n, int deg)
 {
 	rotate_tree_rec(n, deg);
@@ -1857,7 +1929,19 @@ bool swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop
 	put_status(SBSC_MASK_NODE_SWAP, "node_swap 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X\n",
 	           m1->id, d1->id, n1->id, m2->id, d2->id, n2->id);
 
-	/* desktop_t.urgent_count desync class as remove_node()/
+	/* LAYOUT_TALL, LAYOUT_WIDE, and LAYOUT_GRID order leaves by
+	 * insertion_seq, not by tree position, so a plain topology swap
+	 * (below) would be invisible in those layouts. Swap the sequence
+	 * numbers too whenever either side is running one of them, so a
+	 * swap always does a swap. */
+	if (d1->layout == LAYOUT_TALL || d1->layout == LAYOUT_WIDE || d1->layout == LAYOUT_GRID ||
+	    d2->layout == LAYOUT_TALL || d2->layout == LAYOUT_WIDE || d2->layout == LAYOUT_GRID) {
+		uint32_t tmp_seq = n1->insertion_seq;
+		n1->insertion_seq = n2->insertion_seq;
+		n2->insertion_seq = tmp_seq;
+	}
+
+	/* Same desktop_t.urgent_count desync class as remove_node()/
 	 * transfer_node(): swapping across desktops moves each side's
 	 * urgent clients along with it, so the counters need to follow. */
 	if (d1 != d2) {

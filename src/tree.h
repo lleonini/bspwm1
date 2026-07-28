@@ -30,9 +30,11 @@
 
 void arrange(monitor_t *m, desktop_t *d);
 void apply_layout(monitor_t *m, desktop_t *d, node_t *n, bspwm_rect_t rect, bspwm_rect_t root_rect);
+void render_node(monitor_t *m, desktop_t *d, node_t *n, bspwm_rect_t rect);
 presel_t *make_presel(void);
 bool set_type(node_t *n, split_type_t typ);
 bool set_ratio(node_t *n, double rat);
+bool set_master_ratio(desktop_t *d, double rat);
 void presel_dir(monitor_t *m, desktop_t *d, node_t *n, direction_t dir);
 void presel_ratio(monitor_t *m, desktop_t *d, node_t *n, double ratio);
 void cancel_presel(monitor_t *m, desktop_t *d, node_t *n);
@@ -86,6 +88,7 @@ void find_nearest_neighbor(coordinates_t *ref, coordinates_t *dst, direction_t d
 unsigned int node_area(desktop_t *d, node_t *n);
 int tiled_count(node_t *n, bool include_receptacles);
 void find_by_area(area_peak_t ap, coordinates_t *ref, coordinates_t *dst, node_select_t *sel);
+void find_master(coordinates_t *ref, coordinates_t *dst, node_select_t *sel);
 void rotate_tree(node_t *n, int deg);
 void rotate_tree_rec(node_t *n, int deg);
 void flip_tree(node_t *n, flip_t flp);

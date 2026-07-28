@@ -41,6 +41,7 @@ padding_t monocle_padding;
 int window_gap;
 unsigned int border_width;
 double split_ratio;
+double master_ratio;
 child_polarity_t initial_polarity;
 automatic_scheme_t automatic_scheme;
 bool removal_adjustment;
@@ -110,6 +111,7 @@ void load_settings(void)
 	window_gap = WINDOW_GAP;
 	border_width = BORDER_WIDTH;
 	split_ratio = SPLIT_RATIO;
+	master_ratio = MASTER_RATIO;
 	initial_polarity = SECOND_CHILD;
 	automatic_scheme = AUTOMATIC_SCHEME;
 	removal_adjustment = REMOVAL_ADJUSTMENT;

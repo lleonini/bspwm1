@@ -625,7 +625,7 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool 
 	bspwm_rect_t rect = get_rectangle(NULL, NULL, n);
 	uint16_t width = rect.width, height = rect.height;
 	int16_t x = rect.x, y = rect.y;
-	if (n->client->state == STATE_TILED) {
+	if (n->client->state == STATE_TILED && loc->desktop->layout == LAYOUT_TILED) {
 		if (rh & HANDLE_LEFT) {
 			vertical_fence = find_fence(n, DIR_WEST);
 		} else if (rh & HANDLE_RIGHT) {
@@ -664,6 +664,77 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool 
 			adjust_ratios(horizontal_fence, horizontal_fence->rectangle);
 		}
 		arrange(loc->monitor, loc->desktop);
+	} else if (n->client->state == STATE_TILED && (loc->desktop->layout == LAYOUT_TALL || loc->desktop->layout == LAYOUT_WIDE)) {
+		/* TALL/WIDE don't have a BSP fence to walk - there's exactly one
+		 * adjustable boundary per desktop (the master/stack split), held
+		 * in master_ratio. Growing/shrinking it only makes sense when the
+		 * grabbed handle actually sits on that boundary; the handle(s)
+		 * touching the outer edge of the monitor have nothing to push
+		 * against and are a no-op. */
+		desktop_t *d = loc->desktop;
+		bool is_wide = (d->layout == LAYOUT_WIDE);
+		bool master_is_first = (d->layout_variant == VARIANT_NORMAL);
+
+		node_t *master = NULL;
+		for (node_t *f = first_extrema(d->root); f != NULL; f = next_leaf(f, d->root)) {
+			if (f->hidden || f->client == NULL || f->vacant) {
+				continue;
+			}
+			if (master == NULL || f->insertion_seq < master->insertion_seq) {
+				master = f;
+			}
+		}
+		bool n_is_master = (master == n);
+
+		/* Which single handle on *this* node actually touches the shared
+		 * boundary: the master's far side from the stack, or a stack
+		 * member's near side to the master. Any other handle touches the
+		 * monitor edge instead and can't resize anything. */
+		bool touches_boundary;
+		if (!is_wide) {
+			touches_boundary = n_is_master ? (bool) (master_is_first ? (rh & HANDLE_RIGHT) : (rh & HANDLE_LEFT))
+			                                : (bool) (master_is_first ? (rh & HANDLE_LEFT) : (rh & HANDLE_RIGHT));
+		} else {
+			touches_boundary = n_is_master ? (bool) (master_is_first ? (rh & HANDLE_BOTTOM) : (rh & HANDLE_TOP))
+			                                : (bool) (master_is_first ? (rh & HANDLE_TOP) : (rh & HANDLE_BOTTOM));
+		}
+		if (!touches_boundary) {
+			return false;
+		}
+
+		unsigned int total = is_wide ? loc->monitor->rectangle.height : loc->monitor->rectangle.width;
+		if (total == 0) {
+			return false;
+		}
+		int delta_px = is_wide ? dy : dx;
+		/* The boundary sits at master_ratio*total from the monitor's
+		 * near edge when master is first, and from the far edge when
+		 * master is reversed. Moving it towards increasing x/y grows
+		 * master_ratio in the first case and shrinks it in the second -
+		 * this holds regardless of whether the master or a stack member
+		 * was actually grabbed, since it's the same single boundary line
+		 * either way. */
+		double delta_ratio;
+		if (relative) {
+			delta_ratio = (double) delta_px / (double) total;
+		} else {
+			int16_t origin = is_wide ? loc->monitor->rectangle.y : loc->monitor->rectangle.x;
+			double abs_ratio = (double) (delta_px - origin) / (double) total;
+			delta_ratio = abs_ratio - (master_is_first ? d->master_ratio : (1.0 - d->master_ratio));
+		}
+		if (!master_is_first) {
+			delta_ratio = -delta_ratio;
+		}
+		double rat = d->master_ratio + delta_ratio;
+		rat = MAX(0.0, rat);
+		rat = MIN(1.0, rat);
+		set_master_ratio(d, rat);
+		arrange(loc->monitor, loc->desktop);
+	} else if (n->client->state == STATE_TILED) {
+		/* LAYOUT_MONOCLE and LAYOUT_GRID have no user-adjustable boundary
+		 * at all (monocle is one full-rect window at a time, grid divides
+		 * space purely by leaf count) - nothing to resize. */
+		return false;
 	} else {
 		int w = width, h = height;
 		if (relative) {
