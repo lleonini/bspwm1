@@ -515,18 +515,26 @@ void cmd_node(char **args, int num, FILE *rsp)
 				fail(rsp, "%s", "");
 				break;
 			}
+			bool master_stack = (trg.desktop->layout == LAYOUT_TALL || trg.desktop->layout == LAYOUT_WIDE);
 			if ((*args)[0] == '+' || (*args)[0] == '-') {
 				float delta;
 				if (sscanf(*args, "%f", &delta) == 1) {
-					double rat = trg.node->split_ratio;
+					double rat;
+					int max;
+					if (master_stack) {
+						rat = trg.desktop->master_ratio;
+						max = (trg.desktop->layout == LAYOUT_TALL ? trg.monitor->rectangle.width : trg.monitor->rectangle.height);
+					} else {
+						rat = trg.node->split_ratio;
+						max = (trg.node->split_type == TYPE_HORIZONTAL ? trg.node->rectangle.height : trg.node->rectangle.width);
+					}
 					if (delta > -1 && delta < 1) {
 						rat += delta;
 					} else {
-						int max = (trg.node->split_type == TYPE_HORIZONTAL ? trg.node->rectangle.height : trg.node->rectangle.width);
 						rat = ((max * rat) + delta) / max;
 					}
 					if (rat > 0 && rat < 1) {
-						changed |= set_ratio(trg.node, rat);
+						changed |= master_stack ? set_master_ratio(trg.desktop, rat) : set_ratio(trg.node, rat);
 					} else {
 						fail(rsp, "%s", "");
 						break;
@@ -538,7 +546,7 @@ void cmd_node(char **args, int num, FILE *rsp)
 			} else {
 				double rat;
 				if (sscanf(*args, "%lf", &rat) == 1 && rat > 0 && rat < 1) {
-					changed |= set_ratio(trg.node, rat);
+					changed |= master_stack ? set_master_ratio(trg.desktop, rat) : set_ratio(trg.node, rat);
 				} else {
 					fail(rsp, "node %s: Invalid argument: '%s'.\n", *(args - 1), *args);
 					break;
@@ -556,7 +564,17 @@ void cmd_node(char **args, int num, FILE *rsp)
 			}
 			flip_t flp;
 			if (parse_flip(*args, &flp)) {
-				flip_tree(trg.node, flp);
+				if (trg.desktop->layout == LAYOUT_TALL || trg.desktop->layout == LAYOUT_WIDE ||
+				    trg.desktop->layout == LAYOUT_GRID) {
+					/* No tree topology to flip here - the flip command
+					 * becomes a variant toggle instead: master side/edge
+					 * for TALL/WIDE, row-major vs column-major fill for
+					 * GRID. */
+					trg.desktop->layout_variant =
+						(trg.desktop->layout_variant == VARIANT_NORMAL) ? VARIANT_REVERSED : VARIANT_NORMAL;
+				} else {
+					flip_tree(trg.node, flp);
+				}
 				changed = true;
 			} else {
 				fail(rsp, "%s", "");
@@ -812,9 +830,32 @@ void cmd_desktop(char **args, int num, FILE *rsp)
 			bool ret;
 			layout_t lyt;
 			cycle_dir_t cyc;
-			if (parse_cycle_direction(*args, &cyc)) {
-				ret = set_layout(trg.monitor, trg.desktop, (trg.desktop->user_layout + 1) % 2, true);
+			bool alternate = false;
+			if ((*args)[0] == '~') {
+				alternate = true;
+				(*args)++;
+			}
+			if (alternate && (*args)[0] == '\0') {
+				/* Bare `~`: always recall the last user-requested
+				 * layout, mirroring `bspc node -t '~'`. */
+				ret = set_layout(trg.monitor, trg.desktop, trg.desktop->last_layout, true);
+			} else if (parse_cycle_direction(*args, &cyc)) {
+				layout_t cur = trg.desktop->user_layout;
+				layout_t next;
+				if (cyc == CYCLE_NEXT) {
+					next = (cur + 1) % LAYOUT_COUNT;
+				} else {
+					next = (cur + LAYOUT_COUNT - 1) % LAYOUT_COUNT;
+				}
+				ret = set_layout(trg.monitor, trg.desktop, next, true);
 			} else if (parse_layout(*args, &lyt)) {
+				/* `~<layout>`: go to <layout> unless it's already the
+				 * active one, in which case toggle back to whatever
+				 * was active before - same convention as
+				 * `bspc node -t '~floating'`. */
+				if (alternate && trg.desktop->user_layout == lyt) {
+					lyt = trg.desktop->last_layout;
+				}
 				ret = set_layout(trg.monitor, trg.desktop, lyt, true);
 			} else {
 				fail(rsp, "desktop %s: Invalid argument: '%s'.\n", *(args - 1), *args);
@@ -822,6 +863,38 @@ void cmd_desktop(char **args, int num, FILE *rsp)
 			}
 			if (!ret) {
 				fail(rsp, "%s", "");
+				break;
+			}
+		} else if (streq("-F", *args) || streq("--flip", *args)) {
+			num--, args++;
+			if (num < 1) {
+				fail(rsp, "desktop %s: Not enough arguments.\n", *(args - 1));
+				break;
+			}
+			/* Absolute set, not a toggle: `bspc node -F` flips a tree
+			 * (or, for tall/wide/grid, toggles layout_variant) - calling
+			 * it twice undoes itself, which isn't idempotent enough to
+			 * combine with `-l` in one keybind. `left`/`right` here set
+			 * layout_variant directly instead, regardless of its current
+			 * value, so `bspc desktop -l tall -F right` always lands on
+			 * the same side no matter how many times it's pressed. */
+			layout_variant_t variant;
+			if (streq("left", *args)) {
+				variant = VARIANT_NORMAL;
+			} else if (streq("right", *args)) {
+				variant = VARIANT_REVERSED;
+			} else {
+				fail(rsp, "desktop %s: Invalid argument: '%s'.\n", *(args - 1), *args);
+				break;
+			}
+			if (trg.desktop->layout == LAYOUT_TALL || trg.desktop->layout == LAYOUT_WIDE ||
+			    trg.desktop->layout == LAYOUT_GRID) {
+				if (trg.desktop->layout_variant != variant) {
+					trg.desktop->layout_variant = variant;
+					changed = true;
+				}
+			} else {
+				fail(rsp, "desktop %s: No variant to set for this layout.\n", *(args - 1));
 				break;
 			}
 		} else if (streq("-n", *args) || streq("--rename", *args)) {
@@ -1717,6 +1790,27 @@ void set_setting(coordinates_t loc, char *name, char *value, FILE *rsp)
 			return;
 		}
 		return;
+	} else if (streq("master_ratio", name)) {
+		double r;
+		if (sscanf(value, "%lf", &r) == 1 && r > 0 && r < 1) {
+			if (loc.desktop != NULL) {
+				loc.desktop->master_ratio = r;
+			} else if (loc.monitor != NULL) {
+				for (desktop_t *d = loc.monitor->desk_head; d != NULL; d = d->next) {
+					d->master_ratio = r;
+				}
+			} else {
+				master_ratio = r;
+				for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+					for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
+						d->master_ratio = r;
+					}
+				}
+			}
+		} else {
+			fail(rsp, "config: %s: Invalid value: '%s'.\n", name, value); \
+			return;
+		}
 #define SET_COLOR(s) \
 	} else if (streq(#s, name)) { \
 		if (!is_hex_color(value)) { \
@@ -1974,6 +2068,12 @@ void get_setting(coordinates_t loc, char *name, FILE* rsp)
 {
 	if (streq("split_ratio", name)) {
 		fprintf(rsp, "%lf", split_ratio);
+	} else if (streq("master_ratio", name)) {
+		if (loc.desktop != NULL) {
+			fprintf(rsp, "%lf", loc.desktop->master_ratio);
+		} else {
+			fprintf(rsp, "%lf", master_ratio);
+		}
 	} else if (streq("border_width", name)) {
 		if (loc.node != NULL) {
 			for (node_t *n = first_extrema(loc.node); n != NULL; n = next_leaf(n, loc.node)) {
