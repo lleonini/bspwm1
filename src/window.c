@@ -178,6 +178,38 @@ bool manage_window(bspwm_wid_t win, rule_consequence_t *csq, int fd)
 		clear_consequence_payload(csq);
 		return false;
 	}
+
+	/* tall/wide/grid render leaves ordered by insertion_seq, oldest
+	 * (lowest) first - so a plain new window always lands in the stack,
+	 * never as master. If the master is the one focused right now,
+	 * treat opening a new window as "replace the master" instead (same
+	 * as Hyprland's master layout "new is master" behavior): give it a
+	 * lower insertion_seq than the current master's. Scoped to these
+	 * three layouts since insertion_seq doesn't drive rendering
+	 * anywhere else - no point changing it invisibly on a tiled/monocle
+	 * desktop.
+	 *
+	 * Note: since newly created windows are focused by default, this
+	 * cascades - opening several windows in a row each replaces the
+	 * previous one as master, so master ends up being the *last*
+	 * window opened, not the first, unless focus is explicitly moved
+	 * off the master in between. */
+	if (f != NULL && f->client != NULL &&
+	    (d->layout == LAYOUT_TALL || d->layout == LAYOUT_WIDE || d->layout == LAYOUT_GRID)) {
+		node_t *master = NULL;
+		for (node_t *mf = first_extrema(d->root); mf != NULL; mf = next_leaf(mf, d->root)) {
+			if (mf->hidden || mf->client == NULL || mf->vacant) {
+				continue;
+			}
+			if (master == NULL || mf->insertion_seq < master->insertion_seq) {
+				master = mf;
+			}
+		}
+		if (master == f) {
+			n->insertion_seq = (master->insertion_seq > 0) ? master->insertion_seq - 1 : 0;
+		}
+	}
+
 	client_t *c = make_client();
 	if (c == NULL) {
 		perror("manage_window: make_client");
