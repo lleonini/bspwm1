@@ -117,8 +117,12 @@ concept - not a redundant alias for something that already worked.
 
 ## Master side / variant
 
-`tall`/`wide`/`grid` don't have a tree to flip, so `-F`/`--flip` is
-repurposed as a variant toggle:
+Two ways to set it, depending on whether you want a toggle or an
+absolute value.
+
+**`bspc node -F`** — unchanged from stock bspwm: flips tree topology,
+repurposed as a `layout_variant` **toggle** for tall/wide/grid (no tree
+to flip there):
 
 ```
 bspc node -F horizontal    # tall: master left <-> right
@@ -126,8 +130,22 @@ bspc node -F vertical      # wide: master top <-> bottom
                             # grid: row-major <-> column-major fill
 ```
 
-Any focused node works as the target — the toggle applies to the whole
-desktop's `layout_variant`, not to the specific node.
+Any focused node works as the target. Being a toggle, calling it twice
+undoes itself — fine for a single keybind you press repeatedly, less so
+if you want a specific, predictable side every time.
+
+**`bspc desktop -F left|right`** — sets `layout_variant` to an absolute
+value instead of toggling it, so it's idempotent and combines cleanly
+with `-l` in one call:
+
+```
+bspc desktop -l tall -F right    # always lands on master-right,
+                                  # no matter how many times you run it
+```
+
+`left` → `normal`, `right` → `reversed`. Same restriction as the toggle:
+fails with an explicit error on `tiled`/`monocle`, which have no
+`layout_variant` to set.
 
 ## Master ratio
 

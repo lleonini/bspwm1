@@ -865,6 +865,38 @@ void cmd_desktop(char **args, int num, FILE *rsp)
 				fail(rsp, "%s", "");
 				break;
 			}
+		} else if (streq("-F", *args) || streq("--flip", *args)) {
+			num--, args++;
+			if (num < 1) {
+				fail(rsp, "desktop %s: Not enough arguments.\n", *(args - 1));
+				break;
+			}
+			/* Absolute set, not a toggle: `bspc node -F` flips a tree
+			 * (or, for tall/wide/grid, toggles layout_variant) - calling
+			 * it twice undoes itself, which isn't idempotent enough to
+			 * combine with `-l` in one keybind. `left`/`right` here set
+			 * layout_variant directly instead, regardless of its current
+			 * value, so `bspc desktop -l tall -F right` always lands on
+			 * the same side no matter how many times it's pressed. */
+			layout_variant_t variant;
+			if (streq("left", *args)) {
+				variant = VARIANT_NORMAL;
+			} else if (streq("right", *args)) {
+				variant = VARIANT_REVERSED;
+			} else {
+				fail(rsp, "desktop %s: Invalid argument: '%s'.\n", *(args - 1), *args);
+				break;
+			}
+			if (trg.desktop->layout == LAYOUT_TALL || trg.desktop->layout == LAYOUT_WIDE ||
+			    trg.desktop->layout == LAYOUT_GRID) {
+				if (trg.desktop->layout_variant != variant) {
+					trg.desktop->layout_variant = variant;
+					changed = true;
+				}
+			} else {
+				fail(rsp, "desktop %s: No variant to set for this layout.\n", *(args - 1));
+				break;
+			}
 		} else if (streq("-n", *args) || streq("--rename", *args)) {
 			num--, args++;
 			if (num < 1) {
