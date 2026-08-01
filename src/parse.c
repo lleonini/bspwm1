@@ -44,8 +44,16 @@ LOOKUP_TABLE(split_mode, split_mode_t) {
 };
 
 LOOKUP_TABLE(layout, layout_t) {
+   {"grid", LAYOUT_GRID},
    {"monocle", LAYOUT_MONOCLE},
-   {"tiled", LAYOUT_TILED}
+   {"tall", LAYOUT_TALL},
+   {"tiled", LAYOUT_TILED},
+   {"wide", LAYOUT_WIDE}
+};
+
+LOOKUP_TABLE(layout_variant, layout_variant_t) {
+   {"normal", VARIANT_NORMAL},
+   {"reversed", VARIANT_REVERSED}
 };
 
 LOOKUP_TABLE(client_state, client_state_t) {
@@ -127,6 +135,7 @@ LOOKUP_TABLE(tightness, tightness_t) {
 BINARY_SEARCH_PARSER(split_type, split_type_t)
 BINARY_SEARCH_PARSER(split_mode, split_mode_t)
 BINARY_SEARCH_PARSER(layout, layout_t)
+BINARY_SEARCH_PARSER(layout_variant, layout_variant_t)
 BINARY_SEARCH_PARSER(client_state, client_state_t)
 BINARY_SEARCH_PARSER(stack_layer, stack_layer_t)
 BINARY_SEARCH_PARSER(direction, direction_t)
@@ -478,8 +487,14 @@ bool parse_desktop_modifiers(char *desc, desktop_select_t *sel)
        else PARSE_MODIFIER(desktop, local)
        else PARSE_MODIFIER(desktop, tiled)
        else PARSE_MODIFIER(desktop, monocle)
+       else PARSE_MODIFIER(desktop, tall)
+       else PARSE_MODIFIER(desktop, wide)
+       else PARSE_MODIFIER(desktop, grid)
        else PARSE_MODIFIER(desktop, user_tiled)
        else PARSE_MODIFIER(desktop, user_monocle)
+       else PARSE_MODIFIER(desktop, user_tall)
+       else PARSE_MODIFIER(desktop, user_wide)
+       else PARSE_MODIFIER(desktop, user_grid)
        else {
            return false;
        }

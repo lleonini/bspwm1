@@ -33,6 +33,7 @@
 #include "settings.h"
 #include "subscribe.h"
 #include "tree.h"
+#include "layout.h"
 
 subscriber_list_t *make_subscriber(FILE *stream, char *fifo_path, int field, int count)
 {

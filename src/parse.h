@@ -13,6 +13,7 @@ bool parse_bool(char *value, bool *b);
 bool parse_split_type(char *s, split_type_t *t);
 bool parse_split_mode(char *s, split_mode_t *m);
 bool parse_layout(char *s, layout_t *l);
+bool parse_layout_variant(char *s, layout_variant_t *v);
 bool parse_client_state(char *s, client_state_t *t);
 bool parse_stack_layer(char *s, stack_layer_t *l);
 bool parse_direction(char *s, direction_t *d);
